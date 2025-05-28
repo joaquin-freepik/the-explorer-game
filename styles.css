@@ -7,6 +7,26 @@ body {
     height: 100vh;
 }
 
+#splash, #menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+    color: #fff;
+    transition: opacity 0.5s ease;
+}
+
+.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
 #gameCanvas {
     border: 1px solid #555;
     background: #000;
