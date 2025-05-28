@@ -41,7 +41,8 @@
                 if (e.key === 'Enter' && !menu.classList.contains('hidden')) {
                     menu.classList.add('hidden');
                     canvas.classList.remove('hidden');
-                    new Game();
+                    const renderer = new CanvasRenderer(canvas);
+                    new Game(renderer).run();
                     window.removeEventListener('keydown', startGame);
                 }
             });
