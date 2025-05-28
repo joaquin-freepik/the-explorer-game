@@ -1,26 +1,29 @@
-class Sprite {
-    constructor(image, x, y) {
-        this.image = image;
-        this.x = x;
-        this.y = y;
-        this.width = image.width;
-        this.height = image.height;
+if (typeof window !== 'undefined') {
+    class Sprite {
+        constructor(image, x, y) {
+            this.image = image;
+            this.x = x;
+            this.y = y;
+            this.width = image.width;
+            this.height = image.height;
+            this.vx = 0;
+            this.vy = 0;
+        }
+
+        draw(ctx) {
+            ctx.drawImage(this.image, this.x, this.y);
+        }
     }
 
-    draw(ctx) {
-        ctx.drawImage(this.image, this.x, this.y);
-    }
-}
-
-class Game {
-    constructor() {
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.keys = {};
-        window.addEventListener('keydown', e => this.keys[e.key] = true);
-        window.addEventListener('keyup', e => this.keys[e.key] = false);
-        this.loadAssets().then(() => this.start());
-    }
+    class Game {
+        constructor() {
+            this.canvas = document.getElementById('gameCanvas');
+            this.ctx = this.canvas.getContext('2d');
+            this.keys = {};
+            window.addEventListener('keydown', e => this.keys[e.key] = true);
+            window.addEventListener('keyup', e => this.keys[e.key] = false);
+            this.loadAssets().then(() => this.start());
+        }
 
     async loadAssets() {
         this.sprites = [];
@@ -44,9 +47,32 @@ class Game {
     }
 
     start() {
-        const heroImg = this.sprites[0];
-        this.player = new Sprite(heroImg || this.createPlaceholder(), 400, 300);
-        requestAnimationFrame(() => this.loop());
+        this.heroes = [
+            { name: 'Finn', img: this.sprites[0] },
+            { name: 'Maya', img: this.sprites[1] },
+            { name: 'Leo',  img: this.sprites[2] },
+            { name: 'Amara',img: this.sprites[3] }
+        ];
+        this.heroIndex = 0;
+
+        const startImg = this.heroes[0].img || this.createPlaceholder();
+        this.player = new Sprite(startImg, 400, 300);
+
+        this.items = [];
+        this.spawnItems();
+
+        const enemyImg = this.sprites[4] || this.createRedSquare();
+        this.enemy = new Sprite(enemyImg, 100, 100);
+        this.enemy.vx = 1;
+        this.enemy.vy = 1;
+
+        this.health = 100;
+        this.stamina = 100;
+        this.hunger = 100;
+        this.dayTimer = 90; // seconds
+
+        this.lastTime = performance.now();
+        requestAnimationFrame(t => this.loop(t));
     }
 
     createPlaceholder() {
@@ -58,24 +84,215 @@ class Game {
         return canvas;
     }
 
-    loop() {
-        this.update();
-        this.render();
-        requestAnimationFrame(() => this.loop());
+    createRedSquare() {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'red';
+        ctx.fillRect(0, 0, 16, 16);
+        return canvas;
     }
 
-    update() {
-        const speed = 2;
+    spawnItems() {
+        this.items = [];
+        for (let i = 0; i < 5; i++) {
+            const img = this.sprites[5] || this.createPlaceholder();
+            const item = new Sprite(img, Math.random() * (this.canvas.width - 16), Math.random() * (this.canvas.height - 16));
+            item.type = 'food';
+            this.items.push(item);
+        }
+    }
+
+    loop(time) {
+        const dt = (time - this.lastTime) / 1000;
+        this.lastTime = time;
+        this.update(dt);
+        this.render();
+        requestAnimationFrame(t => this.loop(t));
+    }
+
+    update(dt) {
+        const speed = 100 * dt;
         if (this.keys['ArrowUp']) this.player.y -= speed;
         if (this.keys['ArrowDown']) this.player.y += speed;
         if (this.keys['ArrowLeft']) this.player.x -= speed;
         if (this.keys['ArrowRight']) this.player.x += speed;
+
+        if (this.keys['q']) {
+            this.keys['q'] = false;
+            this.heroIndex = (this.heroIndex + 1) % this.heroes.length;
+            const hero = this.heroes[this.heroIndex];
+            this.player.image = hero.img || this.createPlaceholder();
+        }
+
+        // Bounds
+        this.player.x = Math.max(0, Math.min(this.canvas.width - this.player.width, this.player.x));
+        this.player.y = Math.max(0, Math.min(this.canvas.height - this.player.height, this.player.y));
+
+        // Enemy simple move
+        this.enemy.x += this.enemy.vx;
+        this.enemy.y += this.enemy.vy;
+        if (this.enemy.x < 0 || this.enemy.x > this.canvas.width - this.enemy.width) this.enemy.vx *= -1;
+        if (this.enemy.y < 0 || this.enemy.y > this.canvas.height - this.enemy.height) this.enemy.vy *= -1;
+
+        // Collision with enemy
+        if (this.checkCollision(this.player, this.enemy)) {
+            this.health = Math.max(0, this.health - 20 * dt);
+        }
+
+        // Item collection
+        this.items = this.items.filter(item => {
+            if (this.checkCollision(this.player, item)) {
+                this.hunger = Math.min(100, this.hunger + 20);
+                return false;
+            }
+            return true;
+        });
+
+        if (this.items.length === 0) this.spawnItems();
+
+        // Timers
+        this.dayTimer -= dt;
+        this.hunger = Math.max(0, this.hunger - dt * 2);
+        if (this.dayTimer <= 0) {
+            this.stamina = Math.max(0, this.stamina - dt * 10);
+        }
+    }
+
+    checkCollision(a, b) {
+        return a.x < b.x + b.width &&
+               a.x + a.width > b.x &&
+               a.y < b.y + b.height &&
+               a.y + a.height > b.y;
     }
 
     render() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // ground
+        this.ctx.fillStyle = '#063';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // items
+        for (const item of this.items) item.draw(this.ctx);
+
+        // enemy
+        this.enemy.draw(this.ctx);
+
+        // player
         this.player.draw(this.ctx);
+
+        // HUD
+        this.drawBar(10, 10, 'Health', '#c33', this.health);
+        this.drawBar(10, 30, 'Stamina', '#3c3', this.stamina);
+        this.drawBar(10, 50, 'Hunger', '#cc3', this.hunger);
+        this.ctx.fillStyle = '#fff';
+        this.ctx.fillText('Hero: ' + this.heroes[this.heroIndex].name, 10, 70);
+
+        if (this.dayTimer < 10 && Math.floor(this.dayTimer * 5) % 2 === 0) {
+            this.ctx.fillStyle = 'rgba(20,0,50,0.3)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+    }
+
+    drawBar(x, y, label, color, value) {
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(x - 1, y - 8, 104, 6);
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(x, y - 7, value, 4);
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '10px sans-serif';
+        this.ctx.fillText(label, x + 110, y - 2);
     }
 }
 
-window.Game = Game;
+    window.Game = Game;
+} else {
+    class TextGame {
+        constructor() {
+            this.width = 20;
+            this.height = 10;
+            this.heroes = ['Finn', 'Maya', 'Leo', 'Amara'];
+            this.heroIndex = 0;
+            this.player = { x: Math.floor(this.width / 2), y: Math.floor(this.height / 2) };
+            this.enemy = { x: 1, y: 1, vx: 1, vy: 1 };
+            this.items = [];
+            this.health = 100;
+            this.stamina = 100;
+            this.hunger = 100;
+            this.dayTimer = 90;
+            this.spawnItems();
+            this.setupInput();
+            this.lastTime = Date.now();
+            this.interval = setInterval(() => this.loop(), 200);
+        }
+
+        setupInput() {
+            const stdin = process.stdin;
+            stdin.setRawMode(true);
+            stdin.resume();
+            stdin.setEncoding('utf8');
+            stdin.on('data', key => {
+                if (key === '\u0003') process.exit();
+                if (key === '\u001B[A') this.player.y = Math.max(0, this.player.y - 1);
+                if (key === '\u001B[B') this.player.y = Math.min(this.height - 1, this.player.y + 1);
+                if (key === '\u001B[D') this.player.x = Math.max(0, this.player.x - 1);
+                if (key === '\u001B[C') this.player.x = Math.min(this.width - 1, this.player.x + 1);
+                if (key === 'q') this.heroIndex = (this.heroIndex + 1) % this.heroes.length;
+            });
+        }
+
+        spawnItems() {
+            this.items = [];
+            for (let i = 0; i < 3; i++) {
+                this.items.push({
+                    x: Math.floor(Math.random() * this.width),
+                    y: Math.floor(Math.random() * this.height)
+                });
+            }
+        }
+
+        loop() {
+            const now = Date.now();
+            const dt = (now - this.lastTime) / 1000;
+            this.lastTime = now;
+            this.update(dt);
+            this.render();
+        }
+
+        update(dt) {
+            if (Math.random() < 0.5) this.enemy.x += this.enemy.vx; else this.enemy.y += this.enemy.vy;
+            if (this.enemy.x <= 0 || this.enemy.x >= this.width - 1) this.enemy.vx *= -1;
+            if (this.enemy.y <= 0 || this.enemy.y >= this.height - 1) this.enemy.vy *= -1;
+
+            if (this.enemy.x === this.player.x && this.enemy.y === this.player.y) {
+                this.health = Math.max(0, this.health - 10 * dt);
+            }
+
+            this.items = this.items.filter(it => {
+                if (it.x === this.player.x && it.y === this.player.y) {
+                    this.hunger = Math.min(100, this.hunger + 20);
+                    return false;
+                }
+                return true;
+            });
+            if (this.items.length === 0) this.spawnItems();
+
+            this.dayTimer -= dt;
+            this.hunger = Math.max(0, this.hunger - dt * 2);
+            if (this.dayTimer <= 0) this.stamina = Math.max(0, this.stamina - dt * 10);
+        }
+
+        render() {
+            console.clear();
+            const grid = Array.from({ length: this.height }, () => Array(this.width).fill('.'));
+            grid[this.player.y][this.player.x] = 'P';
+            grid[this.enemy.y][this.enemy.x] = 'E';
+            for (const it of this.items) grid[it.y][it.x] = 'F';
+            console.log(grid.map(r => r.join(' ')).join('\n'));
+            console.log(`Hero: ${this.heroes[this.heroIndex]}  Health:${this.health.toFixed(0)}  Stamina:${this.stamina.toFixed(0)}  Hunger:${this.hunger.toFixed(0)}  Day:${this.dayTimer.toFixed(0)}`);
+        }
+    }
+
+    module.exports = TextGame;
+    if (require.main === module) new TextGame();
+}
