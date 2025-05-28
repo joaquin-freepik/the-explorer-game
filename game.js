@@ -78,4 +78,4 @@ class Game {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => new Game());
+window.Game = Game;
